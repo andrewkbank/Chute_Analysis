@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Chute Telemetry Analytics Dashboard</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        :root {
+            --bg-main: #0f172a;
+            --bg-card: #1e293b;
+            --border-color: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary: #6366f1;
+            --secondary: #10b981;
+            --accent: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: var(--bg-card);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+        }
+
+        .tabs-nav {
+            display: flex;
+            gap: 10px;
+        }
+
+        .tab-btn {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid transparent;
+            padding: 10px 20px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-main);
+            background: #273549;
+        }
+
+        .tab-btn.active {
+            color: var(--text-main);
+            background-color: var(--primary);
+            border-color: var(--primary);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        main {
+            flex-grow: 1;
+            position: relative;
+            width: 100%;
+            height: calc(100% - 70px);
+        }
+
+        .tab-content {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            padding: 30px;
+            display: none;
+            flex-direction: column;
+        }
+
+        .tab-content.active {
+            display: flex;
+        }
+
+        .controls-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+            background: var(--bg-card);
+            padding: 18px 25px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .controls-row {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .toggles-group {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            background: #0f172a;
+            padding: 8px 14px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+
+        .toggle-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .toggle-item input {
+            accent-color: var(--primary);
+            cursor: pointer;
+        }
+
+        label {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        select,
+        button {
+            padding: 10px 16px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            font-size: 0.9rem;
+            background: #0f172a;
+            color: var(--text-main);
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        select:focus,
+        button:hover {
+            background: #1e293b;
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        #animate-btn,
+        .action-btn {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+
+        #animate-btn:hover,
+        .action-btn:hover {
+            background: #4f46e5;
+        }
+
+        .chart-frame {
+            flex-grow: 1;
+            background: var(--bg-card);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            padding: 25px;
+            min-height: 0;
+        }
+
+        .chart-frame svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .dashboard-layout {
+            display: flex;
+            gap: 25px;
+            flex-grow: 1;
+            min-height: 0;
+            width: 100%;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: var(--bg-card);
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+        }
+
+        .sidebar h3 {
+            font-size: 1.1rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        .division-group {
+            margin-bottom: 15px;
+        }
+
+        .division-title {
+            font-weight: 700;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .buggy-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            color: #cbd5e1;
+        }
+
+        .buggy-checkbox input {
+            accent-color: var(--primary);
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .main-plots {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 25px;
+            min-height: 0;
+        }
+
+        .plot-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .plot-container.wide {
+            grid-column: span 2;
+        }
+
+        .plot-title {
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+        }
+
+        .plot-wrapper {
+            flex-grow: 1;
+            min-height: 0;
+        }
+
+        .plot-wrapper svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .axis text {
+            fill: var(--text-muted);
+            font-size: 11px;
+        }
+
+        .axis path,
+        .axis line {
+            stroke: var(--border-color);
+        }
+
+        .legend text {
+            fill: var(--text-main);
+            font-weight: 600;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>Chute Telemetry Analytics</h1>
+        <div class="tabs-nav">
+            <button class="tab-btn active" onclick="switchTab('summary-tab')">Aggregated Summary</button>
+            <button class="tab-btn" onclick="switchTab('telemetry-tab')">Live Telemetry Profiles</button>
+        </div>
+    </header>
+
+    <main>
+        <div id="summary-tab" class="tab-content active">
+            <div class="controls-wrapper">
+                <div class="controls-row">
+                    <label for="sort-select">Sort Metric Boundary:</label>
+                    <select id="sort-select"></select>
+                    <button id="order-toggle-btn" class="action-btn" data-order="desc">Order: High to Low</button>
+                </div>
+                <div class="controls-row">
+                    <label>Visible Performance Filters:</label>
+                    <div class="toggles-group" id="metrics-toggle-box"></div>
+                </div>
+            </div>
+            <div class="chart-frame" id="bar-chart-container"></div>
+        </div>
+
+        <div id="telemetry-tab" class="tab-content">
+            <div class="controls-row"
+                style="background: var(--bg-card); padding: 15px 25px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px;">
+                <button id="animate-btn">Start Animation Trace</button>
+                <span id="frame-counter"
+                    style="font-family: monospace; font-weight: bold; font-size: 1.1rem; margin-left: 10px; color: var(--secondary);">Elapsed
+                    Run Frame: +0f</span>
+            </div>
+            <div class="dashboard-layout">
+                <div class="sidebar" id="buggy-selector-sidebar">
+                    <h3>Race Class Categories</h3>
+                    <div id="live-comparison-legend"
+                        style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);"></div>
+                </div>
+                <div class="main-plots">
+                    <div class="plot-container">
+                        <div class="plot-title">Velocity Profiles Matrix (px/frame)</div>
+                        <div class="plot-wrapper" id="speed-plot"></div>
+                    </div>
+                    <div class="plot-container">
+                        <div class="plot-title">Spatial Trajectory Geometry Map</div>
+                        <div class="plot-wrapper" id="map-plot"></div>
+                    </div>
+                    <div class="plot-container wide">
+                        <div class="plot-title">Analytical Lateral Acceleration Profile (px/f²) [First 10f Omitted]
+                        </div>
+                        <div class="plot-wrapper" id="accel-plot"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let dataset = {};
+        let selectedBuggies = [];
+        let isAnimating = false;
+        let animationTimer = null;
+        let currentTimelineFrame = 0;
+        let maxAnimationLength = 0;
+
+        // Expanded Metric Schema Definitions
+        const metricMaster = {
+            "total_line_length_px": { label: "Line Length", color: "#6366f1", active: true },
+            "avg_speed_px_frame": { label: "Avg Speed", color: "#10b981", active: true },
+            "max_lateral_accel_px_f2": { label: "Max Lat Accel", color: "#f59e0b", active: true },
+            "time_in_chute_frames": { label: "Time in Chute", color: "#ec4899", active: false },
+            "entry_speed": { label: "Entry Speed", color: "#06b6d4", active: false },
+            "exit_speed": { label: "Exit Speed", color: "#8b5cf6", active: false },
+            "speed_lost": { label: "Speed Lost", color: "#ef4444", active: false }
+        };
+
+        const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+        const divisionColorScale = d3.scaleOrdinal()
+            .domain(["2026 Mens Finals", "2026 Mens Prelims", "2026 Womens Finals", "2026 Womens Prelims", "2026 All Gender"]) // <-- Replace with your exact 5 division names
+            .range(["#4a80de", "#8aa0fe", "#f472b6", "#f6b2d6", "#fb923c"]);
+
+        d3.json("chute_analytics_results.json").then(data => {
+            dataset = data;
+            buildMetricsControlPanel();
+            initSummaryBarChart();
+            initSidebarSelectors();
+        }).catch(err => console.error("Error reading updated analytical data JSON:", err));
+
+        function switchTab(tabId) {
+            d3.selectAll(".tab-btn").classed("active", false);
+            d3.selectAll(".tab-content").classed("active", false);
+            d3.select(d3.select(event.target).node() ? event.target : null).classed("active", true);
+            d3.select("#" + tabId).classed("active", true);
+
+            if (tabId === "summary-tab") initSummaryBarChart();
+            else renderDetailedPlots();
+        }
+
+        function getFlattenedSummaryData() {
+            let records = [];
+            Object.keys(dataset).forEach(division => {
+                Object.keys(dataset[division]).forEach(buggyId => {
+                    const raw = dataset[division][buggyId];
+                    const s = raw.summary;
+
+                    // Core Helper: Computes the median of an array of numerical values
+                    const getMedian = (arr) => {
+                        if (!arr || arr.length === 0) return 0;
+                        const sorted = [...arr].sort((a, b) => a - b);
+                        const mid = Math.floor(sorted.length / 2);
+                        return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                    };
+
+                    // --- HARD SOURCE LEVEL SLICE: REMOVE FIRST 10 FRAMES FROM EVERYTHING ---
+                    const cleanSpeeds = raw.speeds.slice(10);
+                    const cleanAccel = raw.lateral_acceleration.slice(10);
+
+                    // 1. ENTRY SPEED: Median of the first 20 frames of the cleaned array
+                    const entryPool = cleanSpeeds.slice(0, 20);
+                    const entrySpeed = entryPool.length > 0 ? getMedian(entryPool) : (cleanSpeeds[0] || 0);
+
+                    // 2. EXIT SPEED: Median of the final 20 frames of the cleaned array
+                    const exitPool = cleanSpeeds.slice(-20);
+                    const exitSpeed = exitPool.length > 0 ? getMedian(exitPool) : (cleanSpeeds[cleanSpeeds.length - 1] || 0);
+
+                    // 3. MAX LATERAL ACCELERATION: Median of the top 20 highest peaks
+                    let maxLatAccel = s.max_lateral_accel_px_f2;
+                    if (cleanAccel.length >= 20) {
+                        const top20Peaks = [...cleanAccel]
+                            .sort((a, b) => b - a)
+                            .slice(0, 20);
+                        maxLatAccel = getMedian(top20Peaks);
+                    } else if (cleanAccel.length > 0) {
+                        maxLatAccel = getMedian(cleanAccel);
+                    }
+
+                    records.push({
+                        id: buggyId,
+                        division: division,
+                        total_line_length_px: s.total_line_length_px,
+                        avg_speed_px_frame: s.avg_speed_px_frame,
+                        max_lateral_accel_px_f2: parseFloat(maxLatAccel.toFixed(4)),
+                        time_in_chute_frames: cleanSpeeds.length, // Active duration minus the initialized noise block
+                        entry_speed: parseFloat(entrySpeed.toFixed(2)),
+                        exit_speed: parseFloat(exitSpeed.toFixed(2)),
+                        speed_lost: parseFloat((entrySpeed - exitSpeed).toFixed(2))
+                    });
+                });
+            });
+            return records;
+        }
+
+        function buildMetricsControlPanel() {
+            const select = d3.select("#sort-select");
+            const box = d3.select("#metrics-toggle-box");
+
+            select.selectAll("*").remove();
+            box.selectAll("*").remove();
+
+            Object.keys(metricMaster).forEach(key => {
+                select.append("option").attr("value", key).text(metricMaster[key].label);
+
+                const item = box.append("label").attr("class", "toggle-item");
+                item.append("input").attr("type", "checkbox")
+                    .property("checked", metricMaster[key].active)
+                    .on("change", function () {
+                        metricMaster[key].active = this.checked;
+                        initSummaryBarChart();
+                    });
+                item.append("span").text(metricMaster[key].label);
+            });
+
+            d3.select("#order-toggle-btn").on("click", function () {
+                const currentOrder = this.getAttribute("data-order");
+                if (currentOrder === "desc") {
+                    this.setAttribute("data-order", "asc");
+                    this.innerText = "Order: Low to High";
+                } else {
+                    this.setAttribute("data-order", "desc");
+                    this.innerText = "Order: High to Low";
+                }
+                initSummaryBarChart();
+            });
+
+            d3.select("#sort-select").on("change", initSummaryBarChart);
+        }
+
+        // ==========================================
+        // PART 1: AGGREGATED SUMMARY WITH DUAL LEGENDS
+        // ==========================================
+        function initSummaryBarChart() {
+            const container = d3.select("#bar-chart-container");
+            container.selectAll("*").remove();
+
+            const targetBBox = container.node().getBoundingClientRect();
+            const fullW = targetBBox.width, fullH = targetBBox.height;
+
+            // Adjusted bottom margin to 140px to make plenty of room for the relocated legend below the X-axis labels
+            const margin = { top: 40, right: 40, bottom: 140, left: 60 },
+                width = fullW - margin.left - margin.right,
+                height = fullH - margin.top - margin.bottom;
+
+            const svg = container.append("svg")
+                .attr("viewBox", `0 0 ${fullW} ${fullH}`)
+                .attr("width", "100%")
+                .attr("height", "100%")
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            const activeMetrics = Object.keys(metricMaster).filter(k => metricMaster[k].active);
+            if (activeMetrics.length === 0) return;
+
+            const sortBy = d3.select("#sort-select").property("value");
+            const isDescending = d3.select("#order-toggle-btn").attr("data-order") === "desc";
+            const dataArray = getFlattenedSummaryData();
+
+            dataArray.sort((a, b) => isDescending ? b[sortBy] - a[sortBy] : a[sortBy] - b[sortBy]);
+
+            const x0 = d3.scaleBand().domain(dataArray.map(d => d.id + d.division)).rangeRound([0, width]).paddingInner(0.3);
+            const x1 = d3.scaleBand().domain(activeMetrics).range([0, x0.bandwidth()]).padding(0.04);
+
+            // --- SPECIAL CASE: UNIFIED SPEED Y-AXIS SCALE CONFIGURATION ---
+            const speedKeys = ["avg_speed_px_frame", "entry_speed", "exit_speed"];
+
+            // Find the absolute highest value across all active speed dimensions combined
+            let globalMaxSpeed = 0;
+            activeMetrics.forEach(key => {
+                if (speedKeys.includes(key)) {
+                    const localMax = d3.max(dataArray, d => d[key] || 0);
+                    if (localMax > globalMaxSpeed) globalMaxSpeed = localMax;
+                }
+            });
+
+            // Build the finalized scales dictionary map
+            const scalesMap = {};
+            activeMetrics.forEach(key => {
+                if (speedKeys.includes(key)) {
+                    // Share the exact same shared pixel domain scale map
+                    scalesMap[key] = d3.scaleLinear()
+                        .domain([0, globalMaxSpeed * 1.05])
+                        .range([height, 0]);
+                } else if (key === "max_lateral_accel_px_f2") {
+                    // --- HARD CAP CRASH OUTLIERS AT 0.2 ---
+                    scalesMap[key] = d3.scaleLinear()
+                        .domain([0, 0.2])
+                        .range([height, 0]);
+                } else {
+                    // Standard non-speed metrics maintain independent adaptive domains
+                    const maxVal = d3.max(dataArray, d => d[key] || 0);
+                    scalesMap[key] = d3.scaleLinear()
+                        .domain([0, maxVal * 1.05])
+                        .range([height, 0]);
+                }
+            });
+            // --- END SPECIAL SCALE CASE BLOCK ---
+
+            // --- NEW HIGH-CONTRAST DARK THEME COLOR PALETTE (MAX 5 DIVISIONS) ---
+            const highContrastDivColors = d3.scaleOrdinal()
+                .range(["#38bdf8", "#4ade80", "#fbbf24", "#f472b6", "#fb923c"]);
+
+            // Draw Metric Fill Bar Color Swatches Legend (Kept at the top right)
+            const metricLegend = svg.append("g").attr("transform", `translate(${width - 150}, -25)`);
+            activeMetrics.forEach((key, i) => {
+                const el = metricLegend.append("g").attr("transform", `translate(0, ${i * 18})`);
+                el.append("rect").attr("width", 11).attr("height", 11).attr("rx", 2).attr("fill", metricMaster[key].color);
+                el.append("text").attr("x", 16).attr("y", 10).style("font-size", "11px").attr("fill", "var(--text-muted)").text(metricMaster[key].label);
+            });
+
+            // Draw Axes
+            const xAxis = svg.append("g").attr("class", "x axis").attr("transform", `translate(0,${height})`).call(d3.axisBottom(x0).tickFormat((d, i) => dataArray[i].id));
+            xAxis.selectAll(".tick text")
+                .style("text-anchor", "end")
+                .attr("dx", "-1em").attr("dy", "0.5em")
+                .attr("transform", "rotate(-30)")
+                .style("fill", (d, i) => divisionColorScale(dataArray[i].division)) // <-- Uses global static scale
+                .style("font-weight", "700");
+
+            svg.append("g").attr("class", "y axis").call(d3.axisLeft(d3.scaleLinear().domain([0, 100]).range([height, 0])).tickFormat(d => d + "%"));
+
+            // Render Data Bars
+            const buggyGroups = svg.selectAll(".buggy-group").data(dataArray, d => d.id + d.division);
+            buggyGroups.exit().remove();
+            const combinedGroups = buggyGroups.enter().append("g").attr("class", "buggy-group").merge(buggyGroups);
+            combinedGroups.transition().duration(300).attr("transform", d => `translate(${x0(d.id + d.division)}, 0)`);
+
+            const bars = combinedGroups.selectAll("rect").data(d => activeMetrics.map(k => ({ key: k, value: d[k] || 0 })));
+            bars.enter().append("rect").merge(bars)
+                .transition().duration(300)
+                .attr("x", d => x1(d.key)).attr("y", d => scalesMap[d.key](d.value))
+                .attr("width", x1.bandwidth()).attr("height", d => height - scalesMap[d.key](d.value))
+                .attr("fill", d => metricMaster[d.key].color);
+            bars.exit().remove();
+
+            // --- RELOCATED DIVISION LEGEND (NOW BELOW THE CHART AXIS) ---
+            const divisionsList = Array.from(new Set(dataArray.map(d => d.division)));
+
+            // Positioned vertically below the chart boundaries (height + 75px offset)
+            const divLegend = svg.append("g")
+                .attr("transform", `translate(0, ${height + 100})`);
+
+            divLegend.append("text")
+                .attr("fill", "var(--text-muted)")
+                .style("font-size", "11px")
+                .style("font-weight", "800")
+                .style("letter-spacing", "0.05em")
+                .text("DIVISION LEGEND:");
+
+            divisionsList.forEach((div, i) => {
+                const item = divLegend.append("g").attr("transform", `translate(${120 + (i * 145)}, -10)`);
+                item.append("rect").attr("width", 22).attr("height", 11).attr("rx", 2).attr("fill", divisionColorScale(div)); // <-- Uses global static scale
+                item.append("text").attr("x", 28).attr("y", 10).style("font-size", "11px").style("font-weight", "600").attr("fill", "var(--text-main)").text(div);
+            });
+        }
+
+        // ==========================================
+        // PART 2: DETAILED TELEMETRY WITH OMISSION SLICE
+        // ==========================================
+        function initSidebarSelectors() {
+            const sidebar = d3.select("#buggy-selector-sidebar");
+            Object.keys(dataset).forEach(division => {
+                const group = sidebar.append("div").attr("class", "division-group");
+                group.append("div").attr("class", "division-title").text(division);
+
+                Object.keys(dataset[division]).forEach(buggyId => {
+                    const lbl = group.append("label").attr("class", "buggy-checkbox");
+                    lbl.append("input").attr("type", "checkbox")
+                        .attr("data-div", division).attr("value", buggyId)
+                        .on("change", function () {
+                            const div = this.getAttribute("data-div");
+                            const id = this.value;
+                            if (this.checked) selectedBuggies.push({ division: div, id: id });
+                            else selectedBuggies = selectedBuggies.filter(b => !(b.id === id && b.division === div));
+                            renderDetailedPlots();
+                        });
+                    lbl.append("span").text(buggyId);
+                });
+            });
+        }
+
+        function renderDetailedPlots() {
+            stopAnimation();
+            const targets = ["#speed-plot", "#map-plot", "#accel-plot", "#live-comparison-legend"];
+            targets.forEach(t => d3.select(t).selectAll("*").remove());
+
+            if (selectedBuggies.length === 0) return;
+
+            // Calculate maximum timeline duration based on already sliced configurations
+            maxAnimationLength = d3.max(selectedBuggies, b => {
+                return Math.max(0, dataset[b.division][b.id].speeds.length - 10);
+            });
+
+            const getBoxDims = id => d3.select(id).node().getBoundingClientRect();
+            const bSpeed = getBoxDims("#speed-plot"), bMap = getBoxDims("#map-plot"), bAccel = getBoxDims("#accel-plot");
+            const setupSVG = (id, box) => d3.select(id).append("svg").attr("viewBox", `0 0 ${box.width} ${box.height}`).attr("width", "100%").attr("height", "100%").append("g").attr("transform", "translate(45,15)");
+
+            const marginX = 65, marginY = 35;
+            const svgSpeed = setupSVG("#speed-plot", bSpeed), svgMap = setupSVG("#map-plot", bMap), svgAccel = setupSVG("#accel-plot", bAccel);
+
+            let maxSpeed = 0, maxAccel = 0, minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+
+            // Evaluate display layout coordinate bounds using sliced tracking profiles
+            selectedBuggies.forEach(b => {
+                const d = dataset[b.division][b.id];
+                maxSpeed = Math.max(maxSpeed, d3.max(d.speeds.slice(10)));
+                maxAccel = Math.max(maxAccel, d3.max(d.lateral_acceleration.slice(10)));
+                d.trajectory.slice(10).forEach(pt => {
+                    minX = Math.min(minX, pt[0]); maxX = Math.max(maxX, pt[0]);
+                    minY = Math.min(minY, pt[1]); maxY = Math.max(maxY, pt[1]);
+                });
+            });
+
+            // Find where the scales are declared above your line generators:
+            const xTimeline = d3.scaleLinear().domain([0, maxAnimationLength]).range([0, bSpeed.width - marginX]),
+                xTimelineW = d3.scaleLinear().domain([0, maxAnimationLength]).range([0, bAccel.width - marginX]),
+                yScaleSpeed = d3.scaleLinear().domain([0, maxSpeed * 1.05]).range([bSpeed.height - marginY, 0]),
+
+                // --- FIX: HARD CODED ACCELERATION DOMAIN CEILING ---
+                yScaleAccel = d3.scaleLinear().domain([0, 0.2]).range([bAccel.height - marginY, 0]),
+
+                xMap = d3.scaleLinear().domain([minX - 15, maxX + 15]).range([0, bMap.width - marginX]),
+                yMap = d3.scaleLinear().domain([minY - 15, maxY + 15]).range([0, bMap.height - marginY]);
+
+            const appendXAxis = (svg, scale, h) => svg.append("g").attr("class", "axis").attr("transform", `translate(0,${h - marginY})`).call(d3.axisBottom(scale).ticks(8).tickFormat(d => "+" + d + "f"));
+            appendXAxis(svgSpeed, xTimeline, bSpeed.height);
+            appendXAxis(svgAccel, xTimelineW, bAccel.height);
+            appendXAxis(svgMap, xMap, bMap.height);
+
+            svgSpeed.append("g").attr("class", "axis").call(d3.axisLeft(yScaleSpeed));
+            svgAccel.append("g").attr("class", "axis").call(d3.axisLeft(yScaleAccel).ticks(5));
+            svgMap.append("g").attr("class", "axis").call(d3.axisLeft(yMap));
+
+            const legendContainer = d3.select("#live-comparison-legend");
+            legendContainer.append("div").style("font-weight", "700").style("font-size", "0.85rem").style("color", "var(--text-muted)").style("margin-bottom", "8px").text("ACTIVE LEGEND SCALES:");
+
+            selectedBuggies.forEach((b, index) => {
+                const c = colorScale(index);
+                const d = dataset[b.division][b.id];
+
+                // ENFORCE CLEAN DESTRUCTIVE SLICES AT VISUALIZATION LAYER
+                const cleanSpeedsProfile = d.speeds.slice(10);
+                const cleanAccelProfile = d.lateral_acceleration.slice(10);
+                const cleanTrajectoryProfile = d.trajectory.slice(10);
+
+                const item = legendContainer.append("div").style("display", "flex").style("align-items", "center").style("gap", "8px").style("margin-bottom", "4px").style("font-size", "13px");
+                item.append("div").style("width", "11px").style("height", "11px").style("border-radius", "2px").style("background-color", c);
+                item.append("span").style("color", "#f8fafc").style("font-weight", "600").text(b.id);
+
+                const speedLine = d3.line().x((val, i) => xTimeline(i)).y(val => yScaleSpeed(val));
+                const accelLine = d3.line().x((val, i) => xTimelineW(i)).y(val => yScaleAccel(val));
+                const mapLine = d3.line().x(pt => xMap(pt[0])).y(pt => yMap(pt[1]));
+
+                svgSpeed.append("path").datum(cleanSpeedsProfile).attr("fill", "none").attr("stroke", c).attr("stroke-width", 2.5).attr("d", speedLine);
+                svgAccel.append("path").datum(cleanAccelProfile).attr("fill", "none").attr("stroke", c).attr("stroke-width", 2.5).attr("d", accelLine);
+                svgMap.append("path").datum(cleanTrajectoryProfile).attr("fill", "none").attr("stroke", c).attr("stroke-width", 3).attr("d", mapLine);
+            });
+
+            createVisualAnimationIndicators(svgSpeed, svgMap, svgAccel, xTimeline, xTimelineW, yScaleSpeed, yScaleAccel, xMap, yMap);
+        }
+
+        function createVisualAnimationIndicators(svgS, svgM, svgA, xT, xTW, yS, yA, xM, yM) {
+            d3.selectAll(".anim-indicator").remove();
+
+            selectedBuggies.forEach((b, index) => {
+                const c = colorScale(index);
+                const cleanClassName = (b.id + b.division).replace(/\s+/g, '');
+                svgS.append("circle").attr("class", "anim-indicator ind-speed-" + cleanClassName).attr("r", 5).attr("fill", c).style("display", "none").attr("stroke", "#fff");
+                svgM.append("circle").attr("class", "anim-indicator ind-map-" + cleanClassName).attr("r", 6).attr("fill", c).style("display", "none").attr("stroke", "#fff");
+                svgA.append("circle").attr("class", "anim-indicator ind-accel-" + cleanClassName).attr("r", 5).attr("fill", c).style("display", "none").attr("stroke", "#fff");
+            });
+
+            window.updateActiveIndicators = function (elapsedFrames) {
+                selectedBuggies.forEach((b, index) => {
+                    const d = dataset[b.division][b.id];
+                    const cleanClassName = (b.id + b.division).replace(/\s+/g, '');
+                    const sC = d3.select(".ind-speed-" + cleanClassName), mC = d3.select(".ind-map-" + cleanClassName), aC = d3.select(".ind-accel-" + cleanClassName);
+
+                    // Offset indicator frame checks by 10 to account for sliced data arrays
+                    const explicitDataIdx = elapsedFrames + 10;
+
+                    if (explicitDataIdx < d.speeds.length) {
+                        sC.style("display", "block").attr("cx", xT(elapsedFrames)).attr("cy", yS(d.speeds[explicitDataIdx]));
+                        mC.style("display", "block").attr("cx", xM(d.trajectory[explicitDataIdx][0])).attr("cy", yMap(d.trajectory[explicitDataIdx][1]));
+                        aC.style("display", "block").attr("cx", xTW(elapsedFrames)).attr("cy", yA(d.lateral_acceleration[explicitDataIdx]));
+                    } else {
+                        sC.style("display", "none"); mC.style("display", "none"); aC.style("display", "none");
+                    }
+                });
+            };
+        }
+
+        // --- Playback Engine Hooks ---
+        d3.select("#animate-btn").on("click", function () {
+            if (selectedBuggies.length === 0) return;
+            if (isAnimating) stopAnimation();
+            else startAnimation();
+        });
+
+        function startAnimation() {
+            isAnimating = true; d3.select("#animate-btn").text("Pause Frame Engine");
+            if (currentTimelineFrame >= maxAnimationLength || currentTimelineFrame < 0) currentTimelineFrame = 0;
+
+            animationTimer = setInterval(() => {
+                if (currentTimelineFrame > maxAnimationLength) {
+                    stopAnimation(); d3.select("#frame-counter").text("Run Trace Ended");
+                    currentTimelineFrame = 0; return;
+                }
+                d3.select("#frame-counter").text("Elapsed Run Frame: +" + currentTimelineFrame + "f");
+                if (window.updateActiveIndicators) window.updateActiveIndicators(currentTimelineFrame);
+                currentTimelineFrame++;
+            }, 33);
+        }
+
+        function stopAnimation() {
+            isAnimating = false; d3.select("#animate-btn").text("Start Animation Trace");
+            if (animationTimer) { clearInterval(animationTimer); animationTimer = null; }
+        }
+    </script>
+</body>
+
+</html>
