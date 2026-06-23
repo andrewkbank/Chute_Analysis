@@ -8,4 +8,4 @@ You can just run *line_visalization.html* on a local server like `python -m http
 
 If you want to use the same chute zone boundaries as me, you can find them in *chute_config.json*. If you don't want to use the same zones, delete the *chute_config.json* file and the *line_tracking.py* program will prompt you to make your own. You may have to change the signs of `side_entrance < 0` and `side_exit < 0` depending on the zones you choose.
 
-*pixel_length.py* and *postprocessing.py* exist so you can convert *chute_analytics_results.json* to proper units (m/s and so on) and smooth out all of the noise from the tracking.
+*pixel_length.py* and *postprocessing.py* exist so you can convert *chute_analytics_results.json* to proper units (m/s and so on) and smooth out all of the noise from the tracking. *pixel_length.py* gives you x and y warps by manually measuring the dimensions of the lead truck throughout the footage. You will have to copy+paste the results into *postprocessing.py*
