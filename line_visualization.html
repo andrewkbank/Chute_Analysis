@@ -328,7 +328,7 @@
                 <div class="controls-row">
                     <label for="sort-select">Sort Metric Boundary:</label>
                     <select id="sort-select"></select>
-                    <button id="order-toggle-btn" class="action-btn" data-order="desc">Order: High to Low</button>
+                    <button id="order-toggle-btn" class="action-btn" data-order="asc">Order: Low to High</button>
                 </div>
                 <div class="controls-row">
                     <label>Visible Performance Filters:</label>
@@ -393,9 +393,9 @@
         // --- EXPANDED METRIC SCHEMA WITH REAL-TIME UNITS ---
         const metricMaster = {
             "total_line_length_px": { label: "Line Length (m)", color: "#6366f1", active: true },
-            "avg_speed_px_frame": { label: "Avg Speed (m/s)", color: "#10b981", active: true },
-            "max_lateral_accel_px_f2": { label: "Max Lat Accel (m/s²)", color: "#f59e0b", active: true },
-            "time_in_chute_frames": { label: "Time in Chute (s)", color: "#ec4899", active: false },
+            "avg_speed_px_frame": { label: "Avg Speed (m/s)", color: "#10b981", active: false },
+            "max_lateral_accel_px_f2": { label: "Max Lat Accel (m/s²)", color: "#f59e0b", active: false },
+            "time_in_chute_frames": { label: "Time in Chute (s)", color: "#ec4899", active: true },
             "entry_speed": { label: "Entry Speed (m/s)", color: "#06b6d4", active: false },
             "exit_speed": { label: "Exit Speed (m/s)", color: "#8b5cf6", active: false },
             "speed_lost": { label: "Speed Lost (m/s)", color: "#ef4444", active: false }
@@ -535,25 +535,33 @@
             const x0 = d3.scaleBand().domain(dataArray.map(d => d.id + d.division)).rangeRound([0, width]).paddingInner(0.3);
             const x1 = d3.scaleBand().domain(activeMetrics).range([0, x0.bandwidth()]).padding(0.04);
 
+            // --- TRACK SPEEDS FOR DUAL SHARED SPEEDS CONFIG ---
             const speedKeys = ["avg_speed_px_frame", "entry_speed", "exit_speed"];
             let globalMaxSpeed = 0;
+            let globalMinSpeed = Infinity;
+
             activeMetrics.forEach(key => {
                 if (speedKeys.includes(key)) {
                     const localMax = d3.max(dataArray, d => d[key] || 0);
+                    const localMin = d3.min(dataArray, d => d[key] || Infinity);
                     if (localMax > globalMaxSpeed) globalMaxSpeed = localMax;
+                    if (localMin < globalMinSpeed) globalMinSpeed = localMin;
                 }
             });
 
+            // --- COMPUTE ADAPTIVE NON-ZERO START SCALES MAP ---
             const scalesMap = {};
             activeMetrics.forEach(key => {
                 if (speedKeys.includes(key)) {
-                    scalesMap[key] = d3.scaleLinear().domain([0, globalMaxSpeed * 1.05]).range([height, 0]);
-                } else if (key === "max_lateral_accel_px_f2") {
-                    const localMaxAccel = d3.max(dataArray, d => d[key] || 0);
-                    scalesMap[key] = d3.scaleLinear().domain([0, Math.max(localMaxAccel * 1.1, 4.75)]).range([height, 0]);
+                    // Apply a minor 5% padding window below the minimum speed
+                    const floorSpeed = Math.max(0, globalMinSpeed * 0.95);
+                    scalesMap[key] = d3.scaleLinear().domain([floorSpeed, globalMaxSpeed * 1.05]).range([height, 0]);
                 } else {
                     const maxVal = d3.max(dataArray, d => d[key] || 0);
-                    scalesMap[key] = d3.scaleLinear().domain([0, maxVal * 1.05]).range([height, 0]);
+                    const minVal = d3.min(dataArray, d => d[key] || 0);
+                    // Dynamic scale windows tailored per individual active metric tracking dimension
+                    const floorVal = minVal > 0 ? minVal * 0.95 : 0;
+                    scalesMap[key] = d3.scaleLinear().domain([floorVal, maxVal * 1.05]).range([height, 0]);
                 }
             });
 
@@ -598,8 +606,15 @@
             const bars = combinedGroups.selectAll("rect").data(d => activeMetrics.map(k => ({ key: k, value: d[k] || 0 })));
             bars.enter().append("rect").merge(bars)
                 .transition().duration(300)
-                .attr("x", d => x1(d.key)).attr("y", d => scalesMap[d.key](d.value))
-                .attr("width", x1.bandwidth()).attr("height", d => height - scalesMap[d.key](d.value))
+                .attr("x", d => x1(d.key))
+                .attr("y", d => scalesMap[d.key](d.value))
+                .attr("width", x1.bandwidth())
+                // FIX: Compute height relative to individual scale floor bounds instead of chart zero baseline height
+                .attr("height", d => {
+                    const scale = scalesMap[d.key];
+                    const domainMin = scale.domain()[0];
+                    return scale(domainMin) - scale(d.value);
+                })
                 .attr("fill", d => metricMaster[d.key].color);
             bars.exit().remove();
 
