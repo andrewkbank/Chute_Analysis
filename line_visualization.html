@@ -339,6 +339,7 @@
         </div>
 
         <div id="telemetry-tab" class="tab-content">
+            <!--
             <div class="controls-row"
                 style="background: var(--bg-card); padding: 15px 25px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px;">
                 <button id="animate-btn">Start Animation Trace</button>
@@ -346,6 +347,7 @@
                     style="font-family: monospace; font-weight: bold; font-size: 1.1rem; margin-left: 10px; color: var(--secondary);">Elapsed
                     Run Frame: +0f</span>
             </div>
+            -->
             <div class="dashboard-layout">
                 <div class="sidebar" id="buggy-selector-sidebar">
                     <h3>Race Class Categories</h3>
@@ -354,17 +356,22 @@
                 </div>
                 <div class="main-plots">
                     <div class="plot-container">
-                        <div class="plot-title">Velocity Profiles Matrix (px/frame)</div>
+                        <div class="plot-title">Velocity Profiles Matrix (m/s)</div>
                         <div class="plot-wrapper" id="speed-plot"></div>
                     </div>
                     <div class="plot-container">
                         <div class="plot-title">Spatial Trajectory Geometry Map</div>
                         <div class="plot-wrapper" id="map-plot"></div>
                     </div>
-                    <div class="plot-container wide">
-                        <div class="plot-title">Analytical Lateral Acceleration Profile (px/f²) [First 10f Omitted]
+                    <div class="plot-container">
+                        <div class="plot-title">Analytical Lateral Acceleration Profile (m/s²)
                         </div>
                         <div class="plot-wrapper" id="accel-plot"></div>
+                    </div>
+                    <div class="plot-container">
+                        <div class="plot-title">Heading Profile (degrees)
+                        </div>
+                        <div class="plot-wrapper" id="heading-plot"></div>
                     </div>
                 </div>
             </div>
@@ -379,20 +386,24 @@
         let currentTimelineFrame = 0;
         let maxAnimationLength = 0;
 
-        // Expanded Metric Schema Definitions
+        // --- RENDER CONFIGURATION ---
+        const FPS = 59.96;
+        const DT = 1.0 / FPS;
+
+        // --- EXPANDED METRIC SCHEMA WITH REAL-TIME UNITS ---
         const metricMaster = {
-            "total_line_length_px": { label: "Line Length", color: "#6366f1", active: true },
-            "avg_speed_px_frame": { label: "Avg Speed", color: "#10b981", active: true },
-            "max_lateral_accel_px_f2": { label: "Max Lat Accel", color: "#f59e0b", active: true },
-            "time_in_chute_frames": { label: "Time in Chute", color: "#ec4899", active: false },
-            "entry_speed": { label: "Entry Speed", color: "#06b6d4", active: false },
-            "exit_speed": { label: "Exit Speed", color: "#8b5cf6", active: false },
-            "speed_lost": { label: "Speed Lost", color: "#ef4444", active: false }
+            "total_line_length_px": { label: "Line Length (m)", color: "#6366f1", active: true },
+            "avg_speed_px_frame": { label: "Avg Speed (m/s)", color: "#10b981", active: true },
+            "max_lateral_accel_px_f2": { label: "Max Lat Accel (m/s²)", color: "#f59e0b", active: true },
+            "time_in_chute_frames": { label: "Time in Chute (s)", color: "#ec4899", active: false },
+            "entry_speed": { label: "Entry Speed (m/s)", color: "#06b6d4", active: false },
+            "exit_speed": { label: "Exit Speed (m/s)", color: "#8b5cf6", active: false },
+            "speed_lost": { label: "Speed Lost (m/s)", color: "#ef4444", active: false }
         };
 
         const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
         const divisionColorScale = d3.scaleOrdinal()
-            .domain(["2026 Mens Finals", "2026 Mens Prelims", "2026 Womens Finals", "2026 Womens Prelims", "2026 All Gender"]) // <-- Replace with your exact 5 division names
+            .domain(["2026 Mens Finals", "2026 Mens Prelims", "2026 Womens Finals", "2026 Womens Prelims", "2026 All Gender"])
             .range(["#4a80de", "#8aa0fe", "#f472b6", "#f6b2d6", "#fb923c"]);
 
         d3.json("chute_analytics_results.json").then(data => {
@@ -419,7 +430,6 @@
                     const raw = dataset[division][buggyId];
                     const s = raw.summary;
 
-                    // Core Helper: Computes the median of an array of numerical values
                     const getMedian = (arr) => {
                         if (!arr || arr.length === 0) return 0;
                         const sorted = [...arr].sort((a, b) => a - b);
@@ -427,24 +437,18 @@
                         return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
                     };
 
-                    // --- HARD SOURCE LEVEL SLICE: REMOVE FIRST 10 FRAMES FROM EVERYTHING ---
                     const cleanSpeeds = raw.speeds.slice(10);
                     const cleanAccel = raw.lateral_acceleration.slice(10);
 
-                    // 1. ENTRY SPEED: Median of the first 20 frames of the cleaned array
-                    const entryPool = cleanSpeeds.slice(0, 20);
+                    const entryPool = cleanSpeeds.slice(0, 100);
                     const entrySpeed = entryPool.length > 0 ? getMedian(entryPool) : (cleanSpeeds[0] || 0);
 
-                    // 2. EXIT SPEED: Median of the final 20 frames of the cleaned array
-                    const exitPool = cleanSpeeds.slice(-20);
+                    const exitPool = cleanSpeeds.slice(-50);
                     const exitSpeed = exitPool.length > 0 ? getMedian(exitPool) : (cleanSpeeds[cleanSpeeds.length - 1] || 0);
 
-                    // 3. MAX LATERAL ACCELERATION: Median of the top 20 highest peaks
                     let maxLatAccel = s.max_lateral_accel_px_f2;
-                    if (cleanAccel.length >= 20) {
-                        const top20Peaks = [...cleanAccel]
-                            .sort((a, b) => b - a)
-                            .slice(0, 20);
+                    if (cleanAccel.length >= 50) {
+                        const top20Peaks = [...cleanAccel].sort((a, b) => b - a).slice(0, 20);
                         maxLatAccel = getMedian(top20Peaks);
                     } else if (cleanAccel.length > 0) {
                         maxLatAccel = getMedian(cleanAccel);
@@ -456,7 +460,7 @@
                         total_line_length_px: s.total_line_length_px,
                         avg_speed_px_frame: s.avg_speed_px_frame,
                         max_lateral_accel_px_f2: parseFloat(maxLatAccel.toFixed(4)),
-                        time_in_chute_frames: cleanSpeeds.length, // Active duration minus the initialized noise block
+                        time_in_chute_frames: parseFloat((cleanSpeeds.length * DT).toFixed(3)), // Converted to seconds
                         entry_speed: parseFloat(entrySpeed.toFixed(2)),
                         exit_speed: parseFloat(exitSpeed.toFixed(2)),
                         speed_lost: parseFloat((entrySpeed - exitSpeed).toFixed(2))
@@ -501,9 +505,6 @@
             d3.select("#sort-select").on("change", initSummaryBarChart);
         }
 
-        // ==========================================
-        // PART 1: AGGREGATED SUMMARY WITH DUAL LEGENDS
-        // ==========================================
         function initSummaryBarChart() {
             const container = d3.select("#bar-chart-container");
             container.selectAll("*").remove();
@@ -511,8 +512,7 @@
             const targetBBox = container.node().getBoundingClientRect();
             const fullW = targetBBox.width, fullH = targetBBox.height;
 
-            // Adjusted bottom margin to 140px to make plenty of room for the relocated legend below the X-axis labels
-            const margin = { top: 40, right: 40, bottom: 140, left: 60 },
+            const margin = { top: 40, right: 40, bottom: 140, left: 65 },
                 width = fullW - margin.left - margin.right,
                 height = fullH - margin.top - margin.bottom;
 
@@ -535,10 +535,7 @@
             const x0 = d3.scaleBand().domain(dataArray.map(d => d.id + d.division)).rangeRound([0, width]).paddingInner(0.3);
             const x1 = d3.scaleBand().domain(activeMetrics).range([0, x0.bandwidth()]).padding(0.04);
 
-            // --- SPECIAL CASE: UNIFIED SPEED Y-AXIS SCALE CONFIGURATION ---
             const speedKeys = ["avg_speed_px_frame", "entry_speed", "exit_speed"];
-
-            // Find the absolute highest value across all active speed dimensions combined
             let globalMaxSpeed = 0;
             activeMetrics.forEach(key => {
                 if (speedKeys.includes(key)) {
@@ -547,34 +544,37 @@
                 }
             });
 
-            // Build the finalized scales dictionary map
             const scalesMap = {};
             activeMetrics.forEach(key => {
                 if (speedKeys.includes(key)) {
-                    // Share the exact same shared pixel domain scale map
-                    scalesMap[key] = d3.scaleLinear()
-                        .domain([0, globalMaxSpeed * 1.05])
-                        .range([height, 0]);
+                    scalesMap[key] = d3.scaleLinear().domain([0, globalMaxSpeed * 1.05]).range([height, 0]);
                 } else if (key === "max_lateral_accel_px_f2") {
-                    // --- HARD CAP CRASH OUTLIERS AT 0.2 ---
-                    scalesMap[key] = d3.scaleLinear()
-                        .domain([0, 0.2])
-                        .range([height, 0]);
+                    const localMaxAccel = d3.max(dataArray, d => d[key] || 0);
+                    scalesMap[key] = d3.scaleLinear().domain([0, Math.max(localMaxAccel * 1.1, 4.75)]).range([height, 0]);
                 } else {
-                    // Standard non-speed metrics maintain independent adaptive domains
                     const maxVal = d3.max(dataArray, d => d[key] || 0);
-                    scalesMap[key] = d3.scaleLinear()
-                        .domain([0, maxVal * 1.05])
-                        .range([height, 0]);
+                    scalesMap[key] = d3.scaleLinear().domain([0, maxVal * 1.05]).range([height, 0]);
                 }
             });
-            // --- END SPECIAL SCALE CASE BLOCK ---
 
-            // --- NEW HIGH-CONTRAST DARK THEME COLOR PALETTE (MAX 5 DIVISIONS) ---
-            const highContrastDivColors = d3.scaleOrdinal()
-                .range(["#38bdf8", "#4ade80", "#fbbf24", "#f472b6", "#fb923c"]);
+            // --- NEW DYNAMIC SORTING METRIC Y-AXIS CONFIGURATION ---
+            const primaryAxisScale = scalesMap[sortBy];
+            const yAxisGen = d3.axisLeft(primaryAxisScale).ticks(8);
 
-            // Draw Metric Fill Bar Color Swatches Legend (Kept at the top right)
+            svg.append("g")
+                .attr("class", "y axis")
+                .call(yAxisGen);
+
+            svg.append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("y", -margin.left + 15)
+                .attr("x", -height / 2)
+                .attr("text-anchor", "middle")
+                .attr("fill", "var(--text-muted)")
+                .style("font-size", "12px")
+                .style("font-weight", "600")
+                .text(metricMaster[sortBy].label);
+
             const metricLegend = svg.append("g").attr("transform", `translate(${width - 150}, -25)`);
             activeMetrics.forEach((key, i) => {
                 const el = metricLegend.append("g").attr("transform", `translate(0, ${i * 18})`);
@@ -582,18 +582,14 @@
                 el.append("text").attr("x", 16).attr("y", 10).style("font-size", "11px").attr("fill", "var(--text-muted)").text(metricMaster[key].label);
             });
 
-            // Draw Axes
             const xAxis = svg.append("g").attr("class", "x axis").attr("transform", `translate(0,${height})`).call(d3.axisBottom(x0).tickFormat((d, i) => dataArray[i].id));
             xAxis.selectAll(".tick text")
                 .style("text-anchor", "end")
                 .attr("dx", "-1em").attr("dy", "0.5em")
                 .attr("transform", "rotate(-30)")
-                .style("fill", (d, i) => divisionColorScale(dataArray[i].division)) // <-- Uses global static scale
+                .style("fill", (d, i) => divisionColorScale(dataArray[i].division))
                 .style("font-weight", "700");
 
-            svg.append("g").attr("class", "y axis").call(d3.axisLeft(d3.scaleLinear().domain([0, 100]).range([height, 0])).tickFormat(d => d + "%"));
-
-            // Render Data Bars
             const buggyGroups = svg.selectAll(".buggy-group").data(dataArray, d => d.id + d.division);
             buggyGroups.exit().remove();
             const combinedGroups = buggyGroups.enter().append("g").attr("class", "buggy-group").merge(buggyGroups);
@@ -607,30 +603,17 @@
                 .attr("fill", d => metricMaster[d.key].color);
             bars.exit().remove();
 
-            // --- RELOCATED DIVISION LEGEND (NOW BELOW THE CHART AXIS) ---
             const divisionsList = Array.from(new Set(dataArray.map(d => d.division)));
-
-            // Positioned vertically below the chart boundaries (height + 75px offset)
-            const divLegend = svg.append("g")
-                .attr("transform", `translate(0, ${height + 100})`);
-
-            divLegend.append("text")
-                .attr("fill", "var(--text-muted)")
-                .style("font-size", "11px")
-                .style("font-weight", "800")
-                .style("letter-spacing", "0.05em")
-                .text("DIVISION LEGEND:");
+            const divLegend = svg.append("g").attr("transform", `translate(0, ${height + 100})`);
+            divLegend.append("text").attr("fill", "var(--text-muted)").style("font-size", "11px").style("font-weight", "800").style("letter-spacing", "0.05em").text("DIVISION LEGEND:");
 
             divisionsList.forEach((div, i) => {
                 const item = divLegend.append("g").attr("transform", `translate(${120 + (i * 145)}, -10)`);
-                item.append("rect").attr("width", 22).attr("height", 11).attr("rx", 2).attr("fill", divisionColorScale(div)); // <-- Uses global static scale
+                item.append("rect").attr("width", 22).attr("height", 11).attr("rx", 2).attr("fill", divisionColorScale(div));
                 item.append("text").attr("x", 28).attr("y", 10).style("font-size", "11px").style("font-weight", "600").attr("fill", "var(--text-main)").text(div);
             });
         }
 
-        // ==========================================
-        // PART 2: DETAILED TELEMETRY WITH OMISSION SLICE
-        // ==========================================
         function initSidebarSelectors() {
             const sidebar = d3.select("#buggy-selector-sidebar");
             Object.keys(dataset).forEach(division => {
@@ -655,54 +638,83 @@
 
         function renderDetailedPlots() {
             stopAnimation();
-            const targets = ["#speed-plot", "#map-plot", "#accel-plot", "#live-comparison-legend"];
+            const targets = ["#speed-plot", "#map-plot", "#accel-plot", "#heading-plot", "#live-comparison-legend"];
             targets.forEach(t => d3.select(t).selectAll("*").remove());
 
             if (selectedBuggies.length === 0) return;
 
-            // Calculate maximum timeline duration based on already sliced configurations
-            maxAnimationLength = d3.max(selectedBuggies, b => {
-                return Math.max(0, dataset[b.division][b.id].speeds.length - 10);
-            });
+            maxAnimationLength = d3.max(selectedBuggies, b => Math.max(0, dataset[b.division][b.id].speeds.length - 10));
 
-            const getBoxDims = id => d3.select(id).node().getBoundingClientRect();
-            const bSpeed = getBoxDims("#speed-plot"), bMap = getBoxDims("#map-plot"), bAccel = getBoxDims("#accel-plot");
-            const setupSVG = (id, box) => d3.select(id).append("svg").attr("viewBox", `0 0 ${box.width} ${box.height}`).attr("width", "100%").attr("height", "100%").append("g").attr("transform", "translate(45,15)");
+            const getBoxDims = id => {
+                const node = d3.select(id).node();
+                return node ? node.getBoundingClientRect() : { width: 0, height: 0 };
+            };
+
+            const bSpeed = getBoxDims("#speed-plot"),
+                bMap = getBoxDims("#map-plot"),
+                bAccel = getBoxDims("#accel-plot"),
+                bHeading = getBoxDims("#heading-plot");
+
+            const setupSVG = (id, box) => {
+                if (box.width === 0) return null;
+                return d3.select(id).append("svg").attr("viewBox", `0 0 ${box.width} ${box.height}`).attr("width", "100%").attr("height", "100%").append("g").attr("transform", "translate(45,15)");
+            };
 
             const marginX = 65, marginY = 35;
-            const svgSpeed = setupSVG("#speed-plot", bSpeed), svgMap = setupSVG("#map-plot", bMap), svgAccel = setupSVG("#accel-plot", bAccel);
+            const svgSpeed = setupSVG("#speed-plot", bSpeed),
+                svgMap = setupSVG("#map-plot", bMap),
+                svgAccel = setupSVG("#accel-plot", bAccel),
+                svgHeading = setupSVG("#heading-plot", bHeading);
 
-            let maxSpeed = 0, maxAccel = 0, minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            let minSpeed = Infinity, maxSpeed = -Infinity;
+            let minAccel = 0, maxAccel = -Infinity;
+            let minHeading = Infinity, maxHeading = -Infinity;
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
 
-            // Evaluate display layout coordinate bounds using sliced tracking profiles
             selectedBuggies.forEach(b => {
                 const d = dataset[b.division][b.id];
-                maxSpeed = Math.max(maxSpeed, d3.max(d.speeds.slice(10)));
-                maxAccel = Math.max(maxAccel, d3.max(d.lateral_acceleration.slice(10)));
-                d.trajectory.slice(10).forEach(pt => {
+                const cSpeeds = d.speeds.slice(10);
+                const cAccel = d.lateral_acceleration.slice(10);
+                const cHeading = d.headings.slice(10);
+                const cTraj = d.trajectory.slice(10);
+
+                minSpeed = Math.min(minSpeed, d3.min(cSpeeds));
+                maxSpeed = Math.max(maxSpeed, d3.max(cSpeeds));
+                maxAccel = Math.max(maxAccel, d3.max(cAccel));
+                minHeading = Math.min(minHeading, d3.min(cHeading));
+                maxHeading = Math.max(maxHeading, d3.max(cHeading));
+
+                cTraj.forEach(pt => {
                     minX = Math.min(minX, pt[0]); maxX = Math.max(maxX, pt[0]);
                     minY = Math.min(minY, pt[1]); maxY = Math.max(maxY, pt[1]);
                 });
             });
 
-            // Find where the scales are declared above your line generators:
-            const xTimeline = d3.scaleLinear().domain([0, maxAnimationLength]).range([0, bSpeed.width - marginX]),
-                xTimelineW = d3.scaleLinear().domain([0, maxAnimationLength]).range([0, bAccel.width - marginX]),
-                yScaleSpeed = d3.scaleLinear().domain([0, maxSpeed * 1.05]).range([bSpeed.height - marginY, 0]),
+            // --- CONVERT SCALES TO SECONDS DOMAIN ---
+            const maxAnimationSeconds = maxAnimationLength * DT;
 
-                // --- FIX: HARD CODED ACCELERATION DOMAIN CEILING ---
-                yScaleAccel = d3.scaleLinear().domain([0, 0.2]).range([bAccel.height - marginY, 0]),
+            const xTimeline = d3.scaleLinear().domain([0, maxAnimationSeconds]).range([0, bSpeed.width - marginX]),
+                xTimelineW = d3.scaleLinear().domain([0, maxAnimationSeconds]).range([0, bAccel.width - marginX]),
+                xTimelineH = bHeading.width ? d3.scaleLinear().domain([0, maxAnimationSeconds]).range([0, bHeading.width - marginX]) : null;
 
-                xMap = d3.scaleLinear().domain([minX - 15, maxX + 15]).range([0, bMap.width - marginX]),
+            const yScaleSpeed = d3.scaleLinear().domain([Math.max(0, minSpeed * 0.95), maxSpeed * 1.05]).range([bSpeed.height - marginY, 0]);
+            const yScaleAccel = d3.scaleLinear().domain([0, Math.max(maxAccel * 1.1, 4.75)]).range([bAccel.height - marginY, 0]);
+            const yScaleHeading = bHeading.height ? d3.scaleLinear().domain([minHeading - 2, maxHeading + 2]).range([bHeading.height - marginY, 0]) : null;
+
+            const xMap = d3.scaleLinear().domain([minX - 15, maxX + 15]).range([0, bMap.width - marginX]),
                 yMap = d3.scaleLinear().domain([minY - 15, maxY + 15]).range([0, bMap.height - marginY]);
 
-            const appendXAxis = (svg, scale, h) => svg.append("g").attr("class", "axis").attr("transform", `translate(0,${h - marginY})`).call(d3.axisBottom(scale).ticks(8).tickFormat(d => "+" + d + "f"));
+            // Updated formatter labels from "+f" to "s"
+            const appendXAxis = (svg, scale, h) => svg.append("g").attr("class", "axis").attr("transform", `translate(0,${h - marginY})`).call(d3.axisBottom(scale).ticks(8).tickFormat(d => d.toFixed(1) + "s"));
+
             appendXAxis(svgSpeed, xTimeline, bSpeed.height);
             appendXAxis(svgAccel, xTimelineW, bAccel.height);
+            if (svgHeading) appendXAxis(svgHeading, xTimelineH, bHeading.height);
             appendXAxis(svgMap, xMap, bMap.height);
 
             svgSpeed.append("g").attr("class", "axis").call(d3.axisLeft(yScaleSpeed));
             svgAccel.append("g").attr("class", "axis").call(d3.axisLeft(yScaleAccel).ticks(5));
+            if (svgHeading) svgHeading.append("g").attr("class", "axis").call(d3.axisLeft(yScaleHeading).ticks(6));
             svgMap.append("g").attr("class", "axis").call(d3.axisLeft(yMap));
 
             const legendContainer = d3.select("#live-comparison-legend");
@@ -712,59 +724,70 @@
                 const c = colorScale(index);
                 const d = dataset[b.division][b.id];
 
-                // ENFORCE CLEAN DESTRUCTIVE SLICES AT VISUALIZATION LAYER
                 const cleanSpeedsProfile = d.speeds.slice(10);
                 const cleanAccelProfile = d.lateral_acceleration.slice(10);
+                const cleanHeadingProfile = d.headings.slice(10);
                 const cleanTrajectoryProfile = d.trajectory.slice(10);
 
                 const item = legendContainer.append("div").style("display", "flex").style("align-items", "center").style("gap", "8px").style("margin-bottom", "4px").style("font-size", "13px");
                 item.append("div").style("width", "11px").style("height", "11px").style("border-radius", "2px").style("background-color", c);
                 item.append("span").style("color", "#f8fafc").style("font-weight", "600").text(b.id);
 
-                const speedLine = d3.line().x((val, i) => xTimeline(i)).y(val => yScaleSpeed(val));
-                const accelLine = d3.line().x((val, i) => xTimelineW(i)).y(val => yScaleAccel(val));
+                // Lines calculate horizontal placement based on time (index * DT) instead of standard indices
+                const speedLine = d3.line().x((val, i) => xTimeline(i * DT)).y(val => yScaleSpeed(val));
+                const accelLine = d3.line().x((val, i) => xTimelineW(i * DT)).y(val => yScaleAccel(val));
+                const headingLine = d3.line().x((val, i) => xTimelineH(i * DT)).y(val => yScaleHeading(val));
                 const mapLine = d3.line().x(pt => xMap(pt[0])).y(pt => yMap(pt[1]));
 
                 svgSpeed.append("path").datum(cleanSpeedsProfile).attr("fill", "none").attr("stroke", c).attr("stroke-width", 2.5).attr("d", speedLine);
                 svgAccel.append("path").datum(cleanAccelProfile).attr("fill", "none").attr("stroke", c).attr("stroke-width", 2.5).attr("d", accelLine);
+                if (svgHeading) svgHeading.append("path").datum(cleanHeadingProfile).attr("fill", "none").attr("stroke", c).attr("stroke-width", 2.5).attr("d", headingLine);
                 svgMap.append("path").datum(cleanTrajectoryProfile).attr("fill", "none").attr("stroke", c).attr("stroke-width", 3).attr("d", mapLine);
             });
 
-            createVisualAnimationIndicators(svgSpeed, svgMap, svgAccel, xTimeline, xTimelineW, yScaleSpeed, yScaleAccel, xMap, yMap);
+            createVisualAnimationIndicators(svgSpeed, svgMap, svgAccel, svgHeading, xTimeline, xTimelineW, xTimelineH, yScaleSpeed, yScaleAccel, yScaleHeading, xMap, yMap);
         }
 
-        function createVisualAnimationIndicators(svgS, svgM, svgA, xT, xTW, yS, yA, xM, yM) {
+        function createVisualAnimationIndicators(svgS, svgM, svgA, svgH, xT, xTW, xTH, yS, yA, yH, xM, yM) {
             d3.selectAll(".anim-indicator").remove();
 
             selectedBuggies.forEach((b, index) => {
                 const c = colorScale(index);
                 const cleanClassName = (b.id + b.division).replace(/\s+/g, '');
+
                 svgS.append("circle").attr("class", "anim-indicator ind-speed-" + cleanClassName).attr("r", 5).attr("fill", c).style("display", "none").attr("stroke", "#fff");
                 svgM.append("circle").attr("class", "anim-indicator ind-map-" + cleanClassName).attr("r", 6).attr("fill", c).style("display", "none").attr("stroke", "#fff");
                 svgA.append("circle").attr("class", "anim-indicator ind-accel-" + cleanClassName).attr("r", 5).attr("fill", c).style("display", "none").attr("stroke", "#fff");
+                if (svgH) svgH.append("circle").attr("class", "anim-indicator ind-heading-" + cleanClassName).attr("r", 5).attr("fill", c).style("display", "none").attr("stroke", "#fff");
             });
 
             window.updateActiveIndicators = function (elapsedFrames) {
+                const currentSeconds = elapsedFrames * DT;
+
                 selectedBuggies.forEach((b, index) => {
                     const d = dataset[b.division][b.id];
                     const cleanClassName = (b.id + b.division).replace(/\s+/g, '');
-                    const sC = d3.select(".ind-speed-" + cleanClassName), mC = d3.select(".ind-map-" + cleanClassName), aC = d3.select(".ind-accel-" + cleanClassName);
 
-                    // Offset indicator frame checks by 10 to account for sliced data arrays
+                    const sC = d3.select(".ind-speed-" + cleanClassName),
+                        mC = d3.select(".ind-map-" + cleanClassName),
+                        aC = d3.select(".ind-accel-" + cleanClassName),
+                        hC = d3.select(".ind-heading-" + cleanClassName);
+
                     const explicitDataIdx = elapsedFrames + 10;
 
                     if (explicitDataIdx < d.speeds.length) {
-                        sC.style("display", "block").attr("cx", xT(elapsedFrames)).attr("cy", yS(d.speeds[explicitDataIdx]));
-                        mC.style("display", "block").attr("cx", xM(d.trajectory[explicitDataIdx][0])).attr("cy", yMap(d.trajectory[explicitDataIdx][1]));
-                        aC.style("display", "block").attr("cx", xTW(elapsedFrames)).attr("cy", yA(d.lateral_acceleration[explicitDataIdx]));
+                        sC.style("display", "block").attr("cx", xT(currentSeconds)).attr("cy", yS(d.speeds[explicitDataIdx]));
+                        mC.style("display", "block").attr("cx", xM(d.trajectory[explicitDataIdx][0])).attr("cy", yM(d.trajectory[explicitDataIdx][1]));
+                        aC.style("display", "block").attr("cx", xTW(currentSeconds)).attr("cy", yA(d.lateral_acceleration[explicitDataIdx]));
+                        if (svgH) hC.style("display", "block").attr("cx", xTH(currentSeconds)).attr("cy", yH(d.headings[explicitDataIdx]));
                     } else {
                         sC.style("display", "none"); mC.style("display", "none"); aC.style("display", "none");
+                        if (svgH) hC.style("display", "none");
                     }
                 });
             };
         }
 
-        // --- Playback Engine Hooks ---
         d3.select("#animate-btn").on("click", function () {
             if (selectedBuggies.length === 0) return;
             if (isAnimating) stopAnimation();
@@ -772,25 +795,32 @@
         });
 
         function startAnimation() {
-            isAnimating = true; d3.select("#animate-btn").text("Pause Frame Engine");
+            isAnimating = true;
+            d3.select("#animate-btn").text("Pause Playback Engine");
+
             if (currentTimelineFrame >= maxAnimationLength || currentTimelineFrame < 0) currentTimelineFrame = 0;
 
             animationTimer = setInterval(() => {
                 if (currentTimelineFrame > maxAnimationLength) {
-                    stopAnimation(); d3.select("#frame-counter").text("Run Trace Ended");
-                    currentTimelineFrame = 0; return;
+                    stopAnimation();
+                    d3.select("#frame-counter").text("Run Complete");
+                    currentTimelineFrame = 0;
+                    return;
                 }
-                d3.select("#frame-counter").text("Elapsed Run Frame: +" + currentTimelineFrame + "f");
+                // Display elapsed telemetry duration in clean seconds format
+                d3.select("#frame-counter").text("Time Elapsed: " + (currentTimelineFrame * DT).toFixed(2) + "s");
                 if (window.updateActiveIndicators) window.updateActiveIndicators(currentTimelineFrame);
                 currentTimelineFrame++;
-            }, 33);
+            }, 16.68); // Fired at ~60Hz match interval step speed
         }
 
         function stopAnimation() {
-            isAnimating = false; d3.select("#animate-btn").text("Start Animation Trace");
+            isAnimating = false;
+            d3.select("#animate-btn").text("Start Playback Trace");
             if (animationTimer) { clearInterval(animationTimer); animationTimer = null; }
         }
     </script>
+
 </body>
 
 </html>
