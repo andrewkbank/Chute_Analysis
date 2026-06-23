@@ -717,7 +717,7 @@
             const yScaleHeading = bHeading.height ? d3.scaleLinear().domain([minHeading - 2, maxHeading + 2]).range([bHeading.height - marginY, 0]) : null;
 
             const xMap = d3.scaleLinear().domain([minX - 15, maxX + 15]).range([0, bMap.width - marginX]),
-                yMap = d3.scaleLinear().domain([minY - 15, maxY + 15]).range([0, bMap.height - marginY]);
+                yMap = d3.scaleLinear().domain([minY - 15, maxY + 15]).range([bMap.height - marginY, 0]);
 
             // Updated formatter labels from "+f" to "s"
             const appendXAxis = (svg, scale, h) => svg.append("g").attr("class", "axis").attr("transform", `translate(0,${h - marginY})`).call(d3.axisBottom(scale).ticks(8).tickFormat(d => d.toFixed(1) + "s"));
