@@ -81,20 +81,20 @@
 
         main {
             flex-grow: 1;
-            position: relative;
+            display: flex;
+            gap: 25px;
+            padding: 30px;
+            min-height: 0;
             width: 100%;
             height: calc(100% - 70px);
         }
 
         .tab-content {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            padding: 30px;
             display: none;
             flex-direction: column;
+            flex-grow: 1;
+            height: 100%;
+            min-height: 0;
         }
 
         .tab-content.active {
@@ -319,10 +319,17 @@
         <div class="tabs-nav">
             <button class="tab-btn active" onclick="switchTab('summary-tab')">Aggregated Summary</button>
             <button class="tab-btn" onclick="switchTab('telemetry-tab')">Live Telemetry Profiles</button>
+            <button class="tab-btn" onclick="switchTab('dynamics-envelope-section')">Vehicle Dynamics Envelope</button>
         </div>
     </header>
 
     <main>
+        <div class="sidebar" id="buggy-selector-sidebar" style="display: none;">
+            <h3>Race Class Categories</h3>
+            <div id="live-comparison-legend"
+                style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);"></div>
+        </div>
+
         <div id="summary-tab" class="tab-content active">
             <div class="controls-wrapper">
                 <div class="controls-row">
@@ -339,41 +346,36 @@
         </div>
 
         <div id="telemetry-tab" class="tab-content">
-            <!--
-            <div class="controls-row"
-                style="background: var(--bg-card); padding: 15px 25px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px;">
-                <button id="animate-btn">Start Animation Trace</button>
-                <span id="frame-counter"
-                    style="font-family: monospace; font-weight: bold; font-size: 1.1rem; margin-left: 10px; color: var(--secondary);">Elapsed
-                    Run Frame: +0f</span>
+            <div class="main-plots">
+                <div class="plot-container">
+                    <div class="plot-title">Velocity Profiles Matrix (m/s)</div>
+                    <div class="plot-wrapper" id="speed-plot"></div>
+                </div>
+                <div class="plot-container">
+                    <div class="plot-title">Spatial Trajectory Geometry Map</div>
+                    <div class="plot-wrapper" id="map-plot"></div>
+                </div>
+                <div class="plot-container">
+                    <div class="plot-title">Analytical Lateral Acceleration Profile (m/s²)
+                    </div>
+                    <div class="plot-wrapper" id="accel-plot"></div>
+                </div>
+                <div class="plot-container">
+                    <div class="plot-title">Heading Profile (degrees)
+                    </div>
+                    <div class="plot-wrapper" id="heading-plot"></div>
+                </div>
             </div>
-            -->
-            <div class="dashboard-layout">
-                <div class="sidebar" id="buggy-selector-sidebar">
-                    <h3>Race Class Categories</h3>
-                    <div id="live-comparison-legend"
-                        style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);"></div>
-                </div>
-                <div class="main-plots">
-                    <div class="plot-container">
-                        <div class="plot-title">Velocity Profiles Matrix (m/s)</div>
-                        <div class="plot-wrapper" id="speed-plot"></div>
-                    </div>
-                    <div class="plot-container">
-                        <div class="plot-title">Spatial Trajectory Geometry Map</div>
-                        <div class="plot-wrapper" id="map-plot"></div>
-                    </div>
-                    <div class="plot-container">
-                        <div class="plot-title">Analytical Lateral Acceleration Profile (m/s²)
-                        </div>
-                        <div class="plot-wrapper" id="accel-plot"></div>
-                    </div>
-                    <div class="plot-container">
-                        <div class="plot-title">Heading Profile (degrees)
-                        </div>
-                        <div class="plot-wrapper" id="heading-plot"></div>
-                    </div>
-                </div>
+        </div>
+
+        <div id="dynamics-envelope-section" class="tab-content" style="flex-direction: row; gap: 25px;">
+            <div class="plot-container" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                <div class="plot-title">Dynamics Envelope: Turn Radius vs Lateral Gs</div>
+                <div id="dynamics-scatter-container" style="flex-grow: 1; width: 100%; height: 100%;"></div>
+            </div>
+            <div class="plot-container" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                <div class="plot-title">Steering Angle vs Tilt Angle</div>
+                <div id="steering-scatter-container" style="flex-grow: 1; width: 100%; height: 100%;"></div>
             </div>
         </div>
     </main>
@@ -419,8 +421,14 @@
             d3.select(d3.select(event.target).node() ? event.target : null).classed("active", true);
             d3.select("#" + tabId).classed("active", true);
 
-            if (tabId === "summary-tab") initSummaryBarChart();
-            else renderDetailedPlots();
+            if (tabId === "summary-tab") {
+                d3.select("#buggy-selector-sidebar").style("display", "none");
+                initSummaryBarChart();
+            } else {
+                d3.select("#buggy-selector-sidebar").style("display", "flex");
+                if (tabId === "telemetry-tab") renderDetailedPlots();
+                else if (tabId === "dynamics-envelope-section") initDynamicsEnvelopeChart();
+            }
         }
 
         function getFlattenedSummaryData() {
@@ -645,6 +653,7 @@
                             if (this.checked) selectedBuggies.push({ division: div, id: id });
                             else selectedBuggies = selectedBuggies.filter(b => !(b.id === id && b.division === div));
                             renderDetailedPlots();
+                            initDynamicsEnvelopeChart();
                         });
                     lbl.append("span").text(buggyId);
                 });
@@ -652,6 +661,7 @@
         }
 
         function renderDetailedPlots() {
+            if (!d3.select("#telemetry-tab").classed("active")) return;
             stopAnimation();
             const targets = ["#speed-plot", "#map-plot", "#accel-plot", "#heading-plot", "#live-comparison-legend"];
             targets.forEach(t => d3.select(t).selectAll("*").remove());
@@ -833,6 +843,164 @@
             isAnimating = false;
             d3.select("#animate-btn").text("Start Playback Trace");
             if (animationTimer) { clearInterval(animationTimer); animationTimer = null; }
+        }
+
+        function initDynamicsEnvelopeChart() {
+            if (!d3.select("#dynamics-envelope-section").classed("active")) return;
+
+            // Map selectedBuggies to their corresponding telemetry data in dataset
+            const activeData = selectedBuggies.map(b => {
+                const buggyData = dataset[b.division] ? dataset[b.division][b.id] : null;
+                if (!buggyData) return null;
+                return {
+                    id: b.id,
+                    division: b.division,
+                    speeds: buggyData.speeds,
+                    lateral_acceleration: buggyData.lateral_acceleration
+                };
+            }).filter(Boolean);
+            if (activeData.length === 0) {
+                d3.select("#dynamics-scatter-container").selectAll("*").remove();
+                d3.select("#steering-scatter-container").selectAll("*").remove();
+                return;
+            }
+
+            const RADIUS_CAP_METERS = 100; // Cap straight-line radius so the chart remains readable
+            const GRAVITY = 9.80665;
+            const WHEELBASE_L = 1.65; // wheelbase in meters
+
+            // --- 1. DATA TRANSFORMATION ---
+            let scatterData = [];
+            let maxG = 0;
+            let maxTilt = 0;
+            let maxSteer = 0;
+
+            activeData.forEach(buggy => {
+                const speeds = buggy.speeds;
+                const accels = buggy.lateral_acceleration;
+
+                // Skip the first 10 frames to match your python filtering rules
+                for (let i = 10; i < speeds.length; i++) {
+                    const v = speeds[i];
+                    const a = accels[i];
+
+                    const gForce = a / GRAVITY;
+                    // Prevent divide-by-zero on straights
+                    let radius = a > 0.05 ? (v * v) / a : RADIUS_CAP_METERS;
+                    if (radius > RADIUS_CAP_METERS) radius = RADIUS_CAP_METERS;
+
+                    if (gForce > maxG) maxG = gForce;
+
+                    const tiltAngleRad = Math.atan(gForce);
+                    const tiltAngleDeg = tiltAngleRad * (180 / Math.PI);
+                    
+                    let steerAngleDeg = 0;
+                    if (gForce > 0.001 && radius > 0.1) {
+                        // steering angle = arctan(L / (R * tan(tilt angle)))
+                        steerAngleDeg = Math.atan(WHEELBASE_L / (radius * Math.cos(tiltAngleRad))) * (180 / Math.PI);
+                    }
+
+                    if (tiltAngleDeg > maxTilt) maxTilt = tiltAngleDeg;
+                    if (steerAngleDeg > maxSteer) maxSteer = steerAngleDeg;
+
+                    scatterData.push({
+                        buggyId: buggy.id,
+                        division: buggy.division,
+                        color: divisionColorScale(buggy.division),
+                        gForce: gForce,
+                        radius: radius,
+                        tiltAngle: tiltAngleDeg,
+                        steerAngle: steerAngleDeg
+                    });
+                }
+            });
+
+            // --- 2. REUSABLE PLOTTER FUNCTION ---
+            const drawPlot = (containerSelect, xKey, yKey, xMaxVal, yMaxVal, xLabelText, yLabelText, xFormatter, yFormatter) => {
+                containerSelect.selectAll("*").remove();
+                const targetBBox = containerSelect.node().getBoundingClientRect();
+                const fullW = targetBBox.width, fullH = targetBBox.height;
+                if (fullW === 0 || fullH === 0) return;
+
+                const margin = { top: 40, right: 40, bottom: 60, left: 60 },
+                    width = fullW - margin.left - margin.right,
+                    height = fullH - margin.top - margin.bottom;
+
+                const svg = containerSelect.append("svg")
+                    .attr("viewBox", `0 0 ${fullW} ${fullH}`)
+                    .attr("width", "100%")
+                    .attr("height", "100%")
+                    .append("g")
+                    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+                const xScale = d3.scaleLinear().domain([0, xMaxVal || 1]).range([0, width]);
+                const yScale = d3.scaleLinear().domain([0, yMaxVal || 1]).range([height, 0]);
+
+                const xAxis = d3.axisBottom(xScale).ticks(8).tickFormat(xFormatter);
+                const yAxis = d3.axisLeft(yScale).ticks(8).tickFormat(yFormatter);
+
+                svg.append("g")
+                    .attr("transform", `translate(0,${height})`)
+                    .attr("class", "x axis")
+                    .call(xAxis)
+                    .append("text")
+                    .attr("x", width / 2)
+                    .attr("y", 40)
+                    .attr("fill", "var(--text-main)")
+                    .style("text-anchor", "middle")
+                    .style("font-weight", "600")
+                    .text(xLabelText);
+
+                svg.append("g")
+                    .attr("class", "y axis")
+                    .call(yAxis)
+                    .append("text")
+                    .attr("transform", "rotate(-90)")
+                    .attr("x", -height / 2)
+                    .attr("y", -40)
+                    .attr("fill", "var(--text-main)")
+                    .style("text-anchor", "middle")
+                    .style("font-weight", "600")
+                    .text(yLabelText);
+
+                svg.selectAll(".dot")
+                    .data(scatterData)
+                    .enter().append("circle")
+                    .attr("class", "dot")
+                    .attr("cx", d => xScale(d[xKey]))
+                    .attr("cy", d => yScale(d[yKey]))
+                    .attr("r", 3.5)
+                    .style("fill", d => d.color)
+                    .style("opacity", 0.6)
+                    .style("stroke", "rgba(0,0,0,0.2)")
+                    .style("stroke-width", 0.5);
+            };
+
+            // Plot 1: Radius vs Lateral Gs
+            drawPlot(
+                d3.select("#dynamics-scatter-container"),
+                "gForce",
+                "radius",
+                maxG * 1.1 || 1.0,
+                RADIUS_CAP_METERS,
+                "Lateral Acceleration (G-Force)",
+                "Turn Radius (Meters)",
+                d => d.toFixed(2) + " G",
+                d => d + " m"
+            );
+
+            // Plot 2: Steering Angle vs Tilt Angle
+            drawPlot(
+                d3.select("#steering-scatter-container"),
+                "tiltAngle",
+                "steerAngle",
+                maxTilt * 1.1 || 10,
+                maxSteer * 1.1 || 10,
+                "Ideal Tilt Angle (Degrees)",
+                "Ideal Steering Angle (Degrees)",
+                d => d.toFixed(1) + "°",
+                d => d.toFixed(1) + "°"
+            );
         }
     </script>
 
